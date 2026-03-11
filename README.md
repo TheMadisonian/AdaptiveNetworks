@@ -1,8 +1,14 @@
 # AdaptiveRoads
 
+**Version 4.0** (released March 2026)
+
+
 A Cities: Skylines mod that extends network and road customization capabilities with advanced flagging and tagging systems.
 
 ## Recent Updates - March 2026
+
+- 🚀 **Version bump to 4.0** – assembly version updated from 3.18.1 and release prepared for the next major cycle.
+
 
 ### Platform Support
 - ✅ **macOS Build Support** – Previously Windows-only, now builds and deploys on both Windows and macOS
