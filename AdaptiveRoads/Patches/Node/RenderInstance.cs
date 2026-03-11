@@ -10,8 +10,13 @@ namespace AdaptiveRoads.Patches.Node {
     [InGamePatch]
     public static class RenderInstance {
         public static MethodBase TargetMethod() {
-            // RenderInstance(RenderManager.CameraInfo cameraInfo, ushort nodeID, NetInfo info, int iter, Flags flags, ref uint instanceIndex, ref RenderManager.Instance data)
-            var ret = typeof(NetNode).GetMethod("RenderInstance", BindingFlags.NonPublic | BindingFlags.Instance);
+            // RenderInstance(RenderManager.CameraInfo cameraInfo, ushort nodeID, NetInfo info, int iter, FlagsLong flags, ref uint instanceIndex, ref RenderManager.Instance data)
+            var types = new Type[] {
+                typeof(RenderManager.CameraInfo), typeof(ushort), typeof(NetInfo), typeof(int),
+                typeof(NetNode.FlagsLong), typeof(uint).MakeByRefType(),
+                typeof(RenderManager.Instance).MakeByRefType()
+            };
+            var ret = typeof(NetNode).GetMethod("RenderInstance", BindingFlags.NonPublic | BindingFlags.Instance, null, types, null);
             Assertion.Assert(ret != null, "did not manage to find original function to patch");
             return ret;
         }
@@ -41,8 +46,13 @@ namespace AdaptiveRoads.Patches.Node {
     public static class RenderInstanceOverlayPatch {
 
         public static MethodBase TargetMethod() {
-            // RenderInstance(RenderManager.CameraInfo cameraInfo, ushort nodeID, NetInfo info, int iter, Flags flags, ref uint instanceIndex, ref RenderManager.Instance data)
-            var ret = typeof(NetNode).GetMethod("RenderInstance", BindingFlags.NonPublic | BindingFlags.Instance);
+            // RenderInstance(RenderManager.CameraInfo cameraInfo, ushort nodeID, NetInfo info, int iter, FlagsLong flags, ref uint instanceIndex, ref RenderManager.Instance data)
+            var types = new Type[] {
+                typeof(RenderManager.CameraInfo), typeof(ushort), typeof(NetInfo), typeof(int),
+                typeof(NetNode.FlagsLong), typeof(uint).MakeByRefType(),
+                typeof(RenderManager.Instance).MakeByRefType()
+            };
+            var ret = typeof(NetNode).GetMethod("RenderInstance", BindingFlags.NonPublic | BindingFlags.Instance, null, types, null);
             Assertion.Assert(ret != null, "did not manage to find original function to patch");
             return ret;
         }

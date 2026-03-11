@@ -1,7 +1,6 @@
 namespace AdaptiveRoads.NSInterface {
     using AdaptiveRoads.Manager;
     using ColossalFramework;
-    using Epic.OnlineServices.Presence;
     using KianCommons;
     using System;
     using System.Collections.Generic;

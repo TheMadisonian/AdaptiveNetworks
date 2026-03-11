@@ -9,9 +9,14 @@ namespace AdaptiveRoads.Patches.Node.ConnectGroup {
     [HarmonyPatch()]
     [InGamePatch]
     public static class RenderInstance {
-        public static MethodBase TargetMethod() =>
-            typeof(NetNode)
-            .GetMethod("RenderInstance", BindingFlags.NonPublic | BindingFlags.Instance, throwOnError:true);
+        public static MethodBase TargetMethod() {
+            var types = new Type[] {
+                typeof(RenderManager.CameraInfo), typeof(ushort), typeof(NetInfo), typeof(int),
+                typeof(NetNode.FlagsLong), typeof(uint).MakeByRefType(),
+                typeof(RenderManager.Instance).MakeByRefType()
+            };
+            return typeof(NetNode).GetMethod("RenderInstance", BindingFlags.NonPublic | BindingFlags.Instance, null, types, null);
+        }
 
         public static IEnumerable<CodeInstruction> Transpiler(
             IEnumerable<CodeInstruction> instructions, MethodBase original) {

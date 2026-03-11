@@ -23,13 +23,17 @@
     <DefineConstants></DefineConstants>
   </PropertyGroup>
   <PropertyGroup>
+    <!-- prefer a local development folder if present -->
     <ManagedDLLPath>../dependencies</ManagedDLLPath>
-    <SteamPath>~/Library/Application Support/Steam/</SteamPath>
-    <SteamPath Condition="! Exists ('$(SteamPath)')">$(ProgramFiles)/Steam</SteamPath>
-    <SteamPath Condition="! Exists ('$(SteamPath)')">$(Registry:HKEY_CURRENT_USER\Software\Valve\Steam@SteamPath)</SteamPath>
+    <!-- platform-specific fallbacks when dependencies folder is missing -->
+    <ManagedDLLPath Condition="!Exists('$(ManagedDLLPath)') and '$(OS)' == 'Windows_NT'">$(MSBuildProgramFiles32)/Steam/steamapps/common/Cities_Skylines/Cities_Data/Managed</ManagedDLLPath>
+    <ManagedDLLPath Condition="!Exists('$(ManagedDLLPath)') and '$(OS)' != 'Windows_NT'">$(HOME)/Library/Application Support/Steam/steamapps/common/Cities_Skylines/Cities.app/Contents/Resources/Data/Managed</ManagedDLLPath>
+    <!-- keep old steam path logic for workshop deployment (mostly Windows/Mac) -->
+    <SteamPath Condition="'$(OS)' != 'Windows_NT'">$(HOME)/Library/Application Support/Steam/</SteamPath>
+    <SteamPath Condition="'$(OS)' == 'Windows_NT' and !Exists('$(SteamPath)')">$(ProgramFiles)/Steam</SteamPath>
+    <SteamPath Condition="'$(OS)' == 'Windows_NT' and !Exists('$(SteamPath)')">$(Registry:HKEY_CURRENT_USER\Software\Valve\Steam@SteamPath)</SteamPath>
     <CSPath>$(SteamPath)/steamapps/common/Cities_Skylines</CSPath>
     <ContentPath>$(SteamPath)/steamapps/workshop/content/255710/$(ContentID)</ContentPath>
-    <ManagedDLLPath Condition="!  Exists ('$(ManagedDLLPath)')">$(CSPath)/Cities_Data/Managed</ManagedDLLPath>
     <AssemblySearchPaths>
       $(AssemblySearchPaths);
       $(ManagedDLLPath);
@@ -213,8 +217,10 @@
     <None Update="Resources\uui_ar.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\libs\FbxFormatConverter.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
-
 
   <Target Name="DeployToModDirectory" AfterTargets="Build">
     <Message Importance="high" Text="DeployToModDirectory ..." />
@@ -231,7 +237,9 @@
       <VersionNumber Include="@(Targets->'%(Version)')" />
     </ItemGroup>
     <PropertyGroup>
-      <DeployDir Condition="'$(DeployDir)'==''">$(LOCALAPPDATA)/Colossal Order/Cities_Skylines/Addons/Mods/$(ProjectName)/</DeployDir>
+      <!-- platform‑specific mod install path (mimics Game Anarchy logic) -->
+      <DeployDir Condition="'$(DeployDir)'=='' and '$(OS)' == 'Windows_NT'">$(LOCALAPPDATA)/Colossal Order/Cities_Skylines/Addons/Mods/$(ProjectName)/</DeployDir>
+      <DeployDir Condition="'$(DeployDir)'=='' and '$(OS)' != 'Windows_NT'">$(HOME)/Library/Application Support/Colossal Order/Cities_Skylines/Addons/Mods/$(ProjectName)/</DeployDir>
       <Now>$([System.DateTime]::Now.ToString("HH:mm:ss"))</Now>
       <pdb2mdb>$(PkgMono_Unofficial_pdb2mdb)/tools/pdb2mdb.exe</pdb2mdb>
       <ZipFileName>$(ProjectName)-V@(VersionNumber)-$(GitCommit)-$(Configuration).zip</ZipFileName>
@@ -242,11 +250,11 @@
     </ItemGroup>
     
     <Delete Files="$(TargetPath).mdb;$(TargetDir)PrefabMetaData.dll.mdb" />
-    <Exec Command="&quot;$(pdb2mdb)&quot; &quot;$(TargetPath)&quot;" />
-    <Copy SourceFiles="$(TargetPath).mdb" DestinationFolder="$(DeployDir)" />
+    <Exec Condition="'$(OS)'=='Windows_NT'" Command="&quot;$(pdb2mdb)&quot; &quot;$(TargetPath)&quot;" />
+    <Copy Condition="'$(OS)'=='Windows_NT'" SourceFiles="$(TargetPath).mdb" DestinationFolder="$(DeployDir)" />
 
-    <!--<Copy SourceFiles="$(TargetDir)PrefabMetaData.dll.mdb" DestinationFolder="$(DeployDir)" />
-    <Exec Command="&quot;$(pdb2mdb)&quot; &quot;$(TargetDir)PrefabMetaData.dll&quot;" />-->
+    <!--<Copy Condition="'$(OS)'=='Windows_NT'" SourceFiles="$(TargetDir)PrefabMetaData.dll.mdb" DestinationFolder="$(DeployDir)" />
+    <Exec Condition="'$(OS)'=='Windows_NT'" Command="&quot;$(pdb2mdb)&quot; &quot;$(TargetDir)PrefabMetaData.dll&quot;" />-->
 
     <Copy SourceFiles="@(AuxilaryFiles)" DestinationFolder="$(DeployDir)" />
 
@@ -254,7 +262,7 @@
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(DeployDir)" />
     <Message Importance="high" Text="AssemblyVersion= @(VersionNumber) time=$(Now)" />
     <Delete Files="@(OldZipFiles)" />
-    <ZipDirectory SourceDirectory="$(DeployDir)" DestinationFile="$(ZipFile)" />
+    <!-- zip step disabled; user does not want archives created during build -->
   </Target>
   <Target Name="DeployToWorkshop" AfterTargets="DeployToModDirectory" Condition="'$(ContentID)'!=''">
     <ItemGroup>
@@ -269,7 +277,9 @@
   <Target Name="CustomClean" BeforeTargets="CoreClean">
     <RemoveDir Directories="$(TargetDir)" />
     <PropertyGroup>
-      <DeployDir>$(LOCALAPPDATA)/Colossal Order/Cities_Skylines/Addons/Mods/$(ProjectName)/</DeployDir>
+      <!-- match DeployToModDirectory logic for platform-specific path -->
+      <DeployDir Condition="'$(OS)' == 'Windows_NT'">$(LOCALAPPDATA)/Colossal Order/Cities_Skylines/Addons/Mods/$(ProjectName)/</DeployDir>
+      <DeployDir Condition="'$(OS)' != 'Windows_NT'">$(HOME)/Library/Application Support/Colossal Order/Cities_Skylines/Addons/Mods/$(ProjectName)/</DeployDir>
     </PropertyGroup>
     <Message Text="removing deploy directory" Importance="high" />
     <RemoveDir Directories="$(DeployDir)" />

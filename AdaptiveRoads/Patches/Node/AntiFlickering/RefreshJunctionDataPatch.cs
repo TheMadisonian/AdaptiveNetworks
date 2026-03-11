@@ -13,9 +13,15 @@ namespace AdaptiveRoads.Patches.Node.AntiFlickering {
     [HarmonyPatch()]
     [InGamePatch]
     public static class RenderInstance {
-        public static MethodBase TargetMethod() =>
-            typeof(NetNode)
-            .GetMethod("RenderInstance", BindingFlags.NonPublic | BindingFlags.Instance, throwOnError: true);
+        public static MethodBase TargetMethod() {
+            var types = new Type[] {
+                typeof(RenderManager.CameraInfo), typeof(ushort), typeof(NetInfo),
+                typeof(int), typeof(NetNode.FlagsLong), typeof(uint).MakeByRefType(),
+                typeof(RenderManager.Instance).MakeByRefType()
+            };
+            return typeof(NetNode)
+                .GetMethod("RenderInstance", BindingFlags.NonPublic | BindingFlags.Instance, null, types, null);
+        }
 
         public static IEnumerable<CodeInstruction> Transpiler(
             IEnumerable<CodeInstruction> instructions, MethodBase original) {
@@ -27,10 +33,10 @@ namespace AdaptiveRoads.Patches.Node.AntiFlickering {
                 //Patch(codes, occuranceMatrix0: 4, original); // Junction lod
                 //Patch(codes, occuranceMatrix0: 5, original); // End 
                 //Patch(codes, occuranceMatrix0: 6, original); // End lod
-                //Patch(codes, occuranceMatrix0: 7, original); // Bend
-                //Patch(codes, occuranceMatrix0: 8, original); // Bend lod
-                Patch(codes, occuranceMatrix0: 9, original); // Bend DC
-                Patch(codes, occuranceMatrix0: 10, original); // Bend DC lod
+                //Patch(codes, occuranceMatrix0: 7, original); // Bend (moved to RenderSegments in new game - no longer in RenderInstance)
+                //Patch(codes, occuranceMatrix0: 8, original); // Bend lod (moved to RenderSegments in new game - no longer in RenderInstance)
+                Patch(codes, occuranceMatrix0: 7, original); // Bend DC
+                Patch(codes, occuranceMatrix0: 8, original); // Bend DC lod
 
                 Log.Info($"{ReflectionHelpers.ThisMethod} patched {original} successfully!");
                 return codes;
@@ -45,9 +51,21 @@ namespace AdaptiveRoads.Patches.Node.AntiFlickering {
             FieldInfo f_dataMatrix0 = ReflectionHelpers.GetField<RenderManager.Instance>(nameof(RenderManager.Instance.m_dataMatrix0)); // data.m_dataMatrix0
             FieldInfo f_dataMatrix2 = ReflectionHelpers.GetField<RenderInstanceData>(nameof(RenderInstanceData.m_dataMatrix2)); // data.m_extraData.m_dataMatrix2
 
-            int iLoadDataMatrix0 = codes.Search(c => c.LoadsField(f_dataMatrix0), count: occuranceMatrix0);
-            int iLoadDataMatrix2 = codes.Search(c => c.LoadsField(f_dataMatrix2), startIndex: iLoadDataMatrix0);
-            int iLoadNodeInfo = codes.Search(c => c.IsLdLoc(typeof(NetInfo.Node), method), startIndex: iLoadDataMatrix0, count: -1);
+            int iLoadDataMatrix0 = codes.Search(c => c.LoadsField(f_dataMatrix0), count: occuranceMatrix0, throwOnError: false);
+            if (iLoadDataMatrix0 < 0) {
+                throw new Exception($"AntiFlickering: Could not find m_dataMatrix0 ldfld (occurrence {occuranceMatrix0})");
+            }
+
+            int iLoadDataMatrix2 = codes.Search(c => c.LoadsField(f_dataMatrix2), startIndex: iLoadDataMatrix0, throwOnError: false);
+            if (iLoadDataMatrix2 < 0) {
+                throw new Exception($"AntiFlickering: Could not find m_dataMatrix2 ldfld after position {iLoadDataMatrix0}");
+            }
+
+            int iLoadNodeInfo = codes.Search(c => c.IsLdLoc(typeof(NetInfo.Node), method), startIndex: iLoadDataMatrix0, count: -1, throwOnError: false);
+            if (iLoadNodeInfo < 0) {
+                throw new Exception($"AntiFlickering: Could not find NetInfo.Node local before position {iLoadDataMatrix0}");
+            }
+
             CodeInstruction loadDataMatrix0 = codes[iLoadDataMatrix0];
             CodeInstruction loadDataMatrix2 = codes[iLoadDataMatrix2];
             CodeInstruction loadNodeInfo = codes[iLoadNodeInfo];
@@ -70,15 +88,15 @@ namespace AdaptiveRoads.Patches.Node.AntiFlickering {
                 loadRefData.Clone(),
                 new CodeInstruction(OpCodes.Call, mModifyMatrix),
             });
-
-            //MethodInfo mApplyFlip = typeof(RenderInstance).GetMethod(nameof(ApplyFlip), throwOnError: true);
-            //FieldInfo f_dataVector0 = ReflectionHelpers.GetField<RenderManager.Instance>(nameof(RenderManager.Instance.m_dataVector0)); // data.m_dataVector0
-            //int iLoadDataVector0 = codes.Search(c => c.LoadsField(f_dataVector0), startIndex: iLoadDataMatrix0, count: -1);
-            //codes.InsertInstructions(iLoadDataVector0 + 1, new CodeInstruction[]{
-            //    loadNodeInfo.Clone(),
-            //    new CodeInstruction(OpCodes.Call, mApplyFlip),
-            //});
         }
+
+        //MethodInfo mApplyFlip = typeof(RenderInstance).GetMethod(nameof(ApplyFlip), throwOnError: true);
+        //FieldInfo f_dataVector0 = ReflectionHelpers.GetField<RenderManager.Instance>(nameof(RenderManager.Instance.m_dataVector0)); // data.m_dataVector0
+        //int iLoadDataVector0 = codes.Search(c => c.LoadsField(f_dataVector0), startIndex: iLoadDataMatrix0, count: -1);
+        //codes.InsertInstructions(iLoadDataVector0 + 1, new CodeInstruction[]{
+        //    loadNodeInfo.Clone(),
+        //    new CodeInstruction(OpCodes.Call, mApplyFlip),
+        //});
 
         //static Vector4 ApplyFlip(Vector4 v, NetInfo.Node nodeInfo) {
         //    bool mirror = nodeInfo?.GetMetaData()?.Mirror ?? false;

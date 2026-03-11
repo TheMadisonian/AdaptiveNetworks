@@ -1,5 +1,6 @@
 namespace AdaptiveRoads.Patches.Corner; 
 using AdaptiveRoads.Util;
+using System;
 using HarmonyLib;
 using JetBrains.Annotations;
 using KianCommons;
@@ -18,11 +19,15 @@ public static class CalculateCorner_ShiftPatch {
     [UsedImplicitly]
     [HarmonyBefore("CS.Kian.NodeController")]
     static MethodBase TargetMethod() {
-        // public void CalculateCorner(ushort segmentID, bool heightOffset, bool start, bool leftSide,
-        // out Vector3 cornerPos, out Vector3 cornerDirection, out bool smooth)
+        // We need the overload that returns (out Vector3, out Vector3, out bool)
+        var types = new Type[] {
+            typeof(ushort), typeof(bool), typeof(bool), typeof(bool),
+            typeof(Vector3).MakeByRefType(), typeof(Vector3).MakeByRefType(), typeof(bool).MakeByRefType()
+        };
         return typeof(NetSegment).GetMethod(
                 nameof(NetSegment.CalculateCorner),
-                BindingFlags.Public | BindingFlags.Instance, throwOnError: true);
+                BindingFlags.Public | BindingFlags.Instance, null,
+                types, null);
     }
 
     /// <param name="segmentID">segment to calculate corner</param>

@@ -1,4 +1,5 @@
 namespace AdaptiveRoads.Patches.Node.Corner;
+using System;
 using AdaptiveRoads.Manager;
 using HarmonyLib;
 using KianCommons;
@@ -16,10 +17,14 @@ public static class CalculateCorner_SharpPatch {
     static MethodBase TargetMethod() {
         // public void CalculateCorner(ushort segmentID, bool heightOffset, bool start, bool leftSide,
         // out Vector3 cornerPos, out Vector3 cornerDirection, out bool smooth)
+        var types = new Type[] {
+            typeof(ushort), typeof(bool), typeof(bool), typeof(bool),
+            typeof(Vector3).MakeByRefType(), typeof(Vector3).MakeByRefType(), typeof(bool).MakeByRefType()
+        };
         return typeof(NetSegment).GetMethod(
                 nameof(NetSegment.CalculateCorner),
-                BindingFlags.Public | BindingFlags.Static) ??
-                throw new System.Exception("CalculateCornerPatch Could not find target method.");
+                BindingFlags.Public | BindingFlags.Instance, null, types, null)
+            ?? throw new System.Exception("CalculateCornerPatch Could not find target method.");
     }
 
     delegate float Max(float a, float b);

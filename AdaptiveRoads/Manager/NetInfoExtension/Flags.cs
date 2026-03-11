@@ -8,7 +8,6 @@ namespace AdaptiveRoads.Manager {
     using KianCommons.Serialization;
     using static AdaptiveRoads.Manager.NetInfoExtionsion;
     using System.Xml.Serialization;
-    using Epic.OnlineServices.Presence;
 
     public static partial class NetInfoExtionsion {
         [Serializable]
@@ -132,14 +131,14 @@ namespace AdaptiveRoads.Manager {
         [Serializable]
         public struct TagsInfo {
             private static string[] EMPTY => DynamicFlagsUtil.EMPTY_TAGS;
-            private static DynamicFlags NONE => DynamicFlagsUtil.NONE;
+            private static DynamicFlags<NetInfo> NONE => DynamicFlags<NetInfo>.empty;
             public string[] Required = EMPTY, Forbidden = EMPTY;
             public bool ForbidAll = false;
             public byte MinMatch = 0, MaxMatch = MAX_TAG_COUNT;
             public byte MinMismatch = 0, MaxMismatch = MAX_TAG_COUNT;
 
             [NonSerialized]
-            internal DynamicFlags FlagsRequired = NONE, FlagsForbidden = NONE;
+            internal DynamicFlags<NetInfo> FlagsRequired = NONE, FlagsForbidden = NONE;
             [NonSerialized]
             private bool needCheck_ = false, needCheckLimits_ = false;
 
@@ -147,10 +146,10 @@ namespace AdaptiveRoads.Manager {
 
             public void Recalculate() {
                 // todo recalculate dynamic flags.
-                NetInfo.AddTags(Required);
-                NetInfo.AddTags(Forbidden);
-                FlagsRequired = NetInfo.GetFlags(Required);
-                FlagsForbidden = NetInfo.GetFlags(Forbidden);
+                DynamicFlags<NetInfo>.AddTags(Required);
+                DynamicFlags<NetInfo>.AddTags(Forbidden);
+                FlagsRequired = DynamicFlags<NetInfo>.GetFlags(Required);
+                FlagsForbidden = DynamicFlags<NetInfo>.GetFlags(Forbidden);
 
                 needCheckLimits_ = MaxMismatch < MAX_TAG_COUNT || MaxMatch < MAX_TAG_COUNT || MinMatch > 0 || MinMismatch > 0;
                 needCheck_ = needCheckLimits_ || !Required.IsNullorEmpty() || !Forbidden.IsNullorEmpty();
@@ -176,8 +175,8 @@ namespace AdaptiveRoads.Manager {
                 }
             }
 
-            private bool CheckTags(DynamicFlags flags) =>
-                DynamicFlags.Check(flags, FlagsRequired, ForbidAll ? NetInfo.allTags : FlagsForbidden);
+            private bool CheckTags(DynamicFlags<NetInfo> flags) =>
+                DynamicFlags<NetInfo>.CheckAll(flags, FlagsRequired, ForbidAll ? DynamicFlags<NetInfo>.allTags : FlagsForbidden);
 
             private bool CheckTagsLimit(ushort nodeID) {
                 ref NetNode node = ref nodeID.ToNode();
@@ -212,7 +211,7 @@ namespace AdaptiveRoads.Manager {
         public abstract class TagBase : ISerializable {
             public TagBase(string[] tags) {
                 Tags = tags ?? DynamicFlagsUtil.EMPTY_TAGS;
-                Flags = DynamicFlagsUtil.NONE;
+                Flags = DynamicFlags<NetInfo>.empty;
                 Recalculate();
             }
 
@@ -220,7 +219,7 @@ namespace AdaptiveRoads.Manager {
 
             [NonSerialized]
             [XmlIgnore]
-            public DynamicFlags Flags = DynamicFlagsUtil.NONE;
+            public DynamicFlags<NetInfo> Flags = DynamicFlags<NetInfo>.empty;
 
             private string[] Tags = DynamicFlagsUtil.EMPTY_TAGS;
 
@@ -229,14 +228,17 @@ namespace AdaptiveRoads.Manager {
                 Source.RegisterTags(Tags);
                 Flags = Source.GetFlags(Tags);
                 if (Flags.IsEmpty)
-                    Flags = DynamicFlagsUtil.NONE; // simplify.
+                    Flags = DynamicFlags<NetInfo>.empty; // simplify.
             }
 
-            public virtual bool Check(DynamicFlags flags) => Flags.IsAnyFlagSet(flags);
+            public virtual bool Check(DynamicFlags<NetInfo> flags) => !Flags.IsEmpty || DynamicFlags<NetInfo>.CheckAll(Flags, DynamicFlags<NetInfo>.empty, flags);
+
+            // Extension method to check if any flagset is flagged
+            private bool IsAnyFlagSet(DynamicFlags<NetInfo> flags) => !DynamicFlags<NetInfo>.CheckAll(Flags, DynamicFlags<NetInfo>.empty, flags);
 
             public bool IsNone() => Flags.IsEmpty;
 
-            public virtual bool CheckOrNone(DynamicFlags flags) => Flags.IsAnyFlagSetOrEmpty(flags);
+            public virtual bool CheckOrNone(DynamicFlags<NetInfo> flags) => Flags.IsEmpty || DynamicFlags<NetInfo>.CheckAll(Flags, DynamicFlags<NetInfo>.empty, flags);
 
 
 

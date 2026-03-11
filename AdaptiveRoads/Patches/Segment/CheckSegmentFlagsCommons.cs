@@ -12,6 +12,18 @@ namespace AdaptiveRoads.Patches.Segment {
 
     public static class CheckSegmentFlagsCommons {
         static NetworkExtensionManager man_ => NetworkExtensionManager.Instance;
+
+        /// <summary>
+        /// Set by RenderInstance transpiler before the game calls RenderSegments,
+        /// so that our RenderSegments transpiler can look up segment extension data
+        /// without needing segmentID as a parameter.
+        /// </summary>
+        internal static ushort s_currentSegmentID;
+
+        // Called by transpiler AFTER game's base CheckFlags already ran.
+        // turnAround has already been set by the game's CheckFlags call.
+        // segmentID is either passed directly (methods that have it as a param: PopulateGroupData,
+        // CalculateGroupData) or comes from s_currentSegmentID (RenderSegments, which has none).
         public static bool CheckFlags(NetInfo.Segment segmentInfo, ushort segmentID, ref bool turnAround) {
             var segmentInfoExt = segmentInfo?.GetMetaData();
             if (segmentInfoExt == null) return true; // bypass
@@ -23,82 +35,92 @@ namespace AdaptiveRoads.Patches.Segment {
             ref NetNodeExt netNodeExtStart = ref man_.NodeBuffer[netSegment.m_startNode];
             ref NetNodeExt netNodeExtEnd = ref man_.NodeBuffer[netSegment.m_endNode];
 
-            var segmentTailFlags = netSegmentExt.Start.m_flags; 
+            var segmentTailFlags = netSegmentExt.Start.m_flags;
             var segmentHeadFlags = netSegmentExt.End.m_flags;
             var nodeTailFlags = netNodeStart.flags;
             var nodeHeadFlags = netNodeEnd.flags;
             var nodeExtTailFlags = netNodeExtStart.m_flags;
             var nodeExtHeadFlags = netNodeExtEnd.m_flags;
 
-            bool reverse = /*netSegment.IsInvert() ^*/ NetUtil.LHT;
+            bool reverse = NetUtil.LHT;
             if (reverse) {
                 Helpers.Swap(ref segmentTailFlags, ref segmentHeadFlags);
                 Helpers.Swap(ref nodeTailFlags, ref nodeHeadFlags);
-                //Log.DebugWait($"CheckSegmentFlagsCommons: segment:{segmentID} is reverse");
             }
 
-            {
-                turnAround = false;
-                bool ret = segmentInfo.CheckFlags(netSegment.m_flags, turnAround);
-                ret = ret && segmentInfoExt.CheckFlags(
-                    netSegmentExt.m_flags,
-                    tailFlags: segmentTailFlags,
-                    headFlags:segmentHeadFlags,
-                    tailNodeFlags: nodeTailFlags,
-                    headNodeFlags: nodeHeadFlags,
-                    tailNodeExtFlags: nodeExtTailFlags,
-                    headNodeExtFlags: nodeExtHeadFlags,
-                    userData: netSegmentExt.UserData,
-                    turnAround);
-                if (ret) return true;
-            }
-            {
-                turnAround = true;
-                bool ret = segmentInfo.CheckFlags(netSegment.m_flags, turnAround);
-                ret = ret && segmentInfoExt.CheckFlags(
-                    netSegmentExt.m_flags,
-                    tailFlags: segmentTailFlags,
-                    headFlags: segmentHeadFlags,
-                    tailNodeFlags: nodeTailFlags,
-                    headNodeFlags: nodeHeadFlags,
-                    tailNodeExtFlags: nodeExtTailFlags,
-                    headNodeExtFlags: nodeExtHeadFlags,
-                    userData: netSegmentExt.UserData,
-                    turnAround);
-                if (ret) return true;
-            }
-
-            //fail
-            turnAround = false;
-            return false;
+            return segmentInfoExt.CheckFlags(
+                netSegmentExt.m_flags,
+                tailFlags: segmentTailFlags,
+                headFlags: segmentHeadFlags,
+                tailNodeFlags: nodeTailFlags,
+                headNodeFlags: nodeHeadFlags,
+                tailNodeExtFlags: nodeExtTailFlags,
+                headNodeExtFlags: nodeExtHeadFlags,
+                userData: netSegmentExt.UserData,
+                turnAround);
         }
 
-        static MethodInfo mCheckFlagsExt => typeof(CheckSegmentFlagsCommons).GetMethod("CheckFlags")
+        static MethodInfo mCheckFlagsExt => typeof(CheckSegmentFlagsCommons).GetMethod(
+            "CheckFlags", new[] { typeof(NetInfo.Segment), typeof(ushort), typeof(bool).MakeByRefType() })
             ?? throw new Exception("mCheckFlagsExt is null");
         static MethodInfo mCheckFlags => typeof(NetInfo.Segment).GetMethod("CheckFlags")
             ?? throw new Exception("mCheckFlags is null");
+        static MethodInfo mRenderSegments => typeof(NetSegment).GetMethod(
+            "RenderSegments", BindingFlags.NonPublic | BindingFlags.Instance, null,
+            new[] { typeof(RenderManager.CameraInfo), typeof(NetInfo), typeof(RenderManager.Instance), typeof(float), typeof(NetManager) }, null)
+            ?? throw new Exception("mRenderSegments is null");
+        static FieldInfo fCurrentSegmentID => typeof(CheckSegmentFlagsCommons)
+            .GetField(nameof(s_currentSegmentID), BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)
+            ?? throw new Exception("fCurrentSegmentID is null");
 
-        // returns the position of First DrawMesh after index.
+        /// <summary>
+        /// Injected into NetSegment.RenderInstance — sets s_currentSegmentID before calling RenderSegments
+        /// so our RenderSegments patch can access the segment ID.
+        /// </summary>
+        public static void PatchSetCurrentSegmentID(List<CodeInstruction> codes, MethodBase method) {
+            CodeInstruction ldarg_SegmentID = TranspilerUtils.GetLDArg(method, "segmentID");
+
+            int index = codes.Search(c => c.Calls(mRenderSegments), throwOnError: false);
+            if (index < 0) {
+                throw new Exception($"PatchSetCurrentSegmentID: Could not find call to RenderSegments in {method.Name}");
+            }
+
+            codes.InsertInstructions(index, new[] {
+                ldarg_SegmentID,
+                new CodeInstruction(OpCodes.Stsfld, fCurrentSegmentID),
+            });
+        }
+
+        // Injects an AR extension flag check after the game's CheckFlags call in RenderSegments.
+        // Uses s_currentSegmentID (set before the RenderSegments call) to look up segment extension data.
         public static void PatchCheckFlags(List<CodeInstruction> codes, MethodBase method, int occurance = 1) {
-            // callvirt NetInfo+Segment.CheckFlags(valuetype NetSegment+Flags, bool&)
-            var index = codes.Search(c => c.Calls(mCheckFlags), count: occurance);
-            Assertion.Assert(index != 0, "index!=0");
+            // callvirt NetInfo+Segment.CheckFlags(Flags, Flags2, bool&)
+            var index = codes.Search(c => c.Calls(mCheckFlags), count: occurance, throwOnError: false);
+            if (index < 1) {
+                throw new Exception($"PatchCheckFlags: Could not find CheckFlags call (occurrence {occurance}) in {method.Name}.");
+            }
 
             CodeInstruction LDLoc_SegmentInfo = GetPrevLdLocSegmentInfo(method, codes, index);
             CodeInstruction LDLoca_turnAround = new CodeInstruction(codes[index - 1]);
-            Assertion.Assert(LDLoca_turnAround.opcode == OpCodes.Ldloca_S);
-            CodeInstruction LDArg_SegmenteID = TranspilerUtils.GetLDArg(method, "segmentID");
+            Assertion.Assert(LDLoca_turnAround.opcode == OpCodes.Ldloca_S, $"expected Ldloca_S, got {LDLoca_turnAround.opcode}");
+
+            // If the target method has a segmentID parameter, load it directly.
+            // Otherwise (e.g. RenderSegments) load from s_currentSegmentID set by RenderInstance.
+            bool hasSegmentIDParam = Array.Find(method.GetParameters(), p => p.Name == "segmentID") != null;
+            CodeInstruction loadSegmentID = hasSegmentIDParam
+                ? TranspilerUtils.GetLDArg(method, "segmentID")
+                : new CodeInstruction(OpCodes.Ldsfld, fCurrentSegmentID);
 
             { // insert our checkflags after base checkflags
                 var newInstructions = new[]{
                     LDLoc_SegmentInfo,
-                    LDArg_SegmenteID,
+                    loadSegmentID,
                     LDLoca_turnAround,
                     new CodeInstruction(OpCodes.Call, mCheckFlagsExt),
                     new CodeInstruction(OpCodes.And),
                 };
                 codes.InsertInstructions(index + 1, newInstructions);
-            } // end block
+            }
         }
 
         static FieldInfo fSegments => typeof(NetInfo).GetField("m_segments") ?? throw new Exception("fSegments is null");

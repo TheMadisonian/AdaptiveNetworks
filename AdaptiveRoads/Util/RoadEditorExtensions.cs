@@ -1,6 +1,5 @@
 namespace AdaptiveRoads.Util {
     using ColossalFramework.UI;
-    using Epic.OnlineServices.Presence;
     using KianCommons;
     using System;
     using System.Reflection;

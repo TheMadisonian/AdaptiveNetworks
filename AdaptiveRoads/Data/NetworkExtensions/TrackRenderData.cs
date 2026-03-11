@@ -6,7 +6,6 @@ namespace AdaptiveRoads.Data.NetworkExtensions {
     using KianCommons.Math;
     using KianCommons;
     using AdaptiveRoads.Util;
-    using Epic.OnlineServices.Presence;
     using System;
 
     public struct TrackRenderData {
@@ -180,7 +179,7 @@ namespace AdaptiveRoads.Data.NetworkExtensions {
                     trackInfo.ParentInfo, tempSegmentInfo,
                     leftMatrix: this.LeftMatrix, rightMatrix: this.RightMatrix,
                     meshScale: this.MeshScale, objectIndex: this.ObjectIndex,
-                    ref vertexIndex, ref triangleIndex, this.Position, meshData, ref _);
+                    ref vertexIndex, ref triangleIndex, this.Position, meshData, ref _, new Vector2());
             }
         }
     }
